@@ -39,6 +39,7 @@ If initial p- value is > 0.05, each matrix value is multiplied by a decimal valu
 When evaluating the smallest multiplier or divisor, we tested decimal values above 1 that differed by an increment of 0.0000000001. Lower increments did not have greater precision, because they provided identical RI values. 
 It has been suggested that a RI > 2 indicates a robust finding.
 
+Note that while the UFI calculation is quick, calculating the RI can be computationally demanding depending on the distribution.
 
 **Reference**
 Feinstein, A. R. (1990). The unit fragility index: an additional appraisal of "statistical significance" for a contrast of two proportions. J Clin Epidemiol, 43, 201–209
