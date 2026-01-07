@@ -1,0 +1,310 @@
+---
+title: "UFI_RI_calculator"
+output: html_document
+date: "2025-07-14"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Enter data to create a matrix or # create a list of tables for analysis 
+# Initial Fisher's exact test
+# Function to perform updates and calculate p-value
+# for UFI initial p_value > 0.05 the box with the largest value increases incrementally by 1 until the findings become significant.
+
+# Enter data to create a matrix (sinlge table)
+```{r}
+a <- 10 # healthy n  ≤  median
+b <- 1 # CP n  ≤  median
+c <- 10 # healthy n > median 
+d <- 30 # CP n > median
+n <- a +b + c + d
+n
+n_healhty <- a + c
+n_healhty
+
+matx <- matrix(c(a, b, c, d), nrow = 2, byrow = TRUE)
+#matx <- matrix(c(10, 1, 10, 30), nrow = 2, byrow = TRUE)
+matx
+
+data <- list(
+  "Table_1" = matx)
+fisher.test(matx)$p.value
+
+```
+
+# create a list of tables for analysis  
+```{r}
+# data list
+data <- list(
+  "table_S1" = matrix(c(10, 31, 10, 0), nrow = 2, byrow = TRUE),# p < 0.05
+  "table_S2" = matrix(c(16, 14, 15, 16), nrow = 2, byrow = TRUE) # p > 0.05
+  )
+# view a matrix from data list
+data$table_S1
+data$table_S2
+```
+
+
+#Function for calculating unit fragility index (UFI) 
+
+```{r}
+# Function to calculate p-value and UFI
+calculate_p_values <- function(mat, p_value) {
+  iteration <- 0
+  if (p_value > 0.05) {
+    while (TRUE) {
+      if (mat[1, 2] <= mat[1, 1]) {
+        # p_value > 0.05 the largest value increases incrementally by 1 until the findings become significant.
+        mat[1, 1] <- mat[1, 1] + 1 # a + 1 # largest value increases
+        mat[1, 2] <- mat[1, 2] - 1 # b - 1
+        mat[2, 1] <- mat[2, 1] - 1 # c - 1
+        mat[2, 2] <- mat[2, 2] + 1 # d + 1
+      } else { # 1,2 is largest value 
+        mat[1, 1] <- mat[1, 1] - 1 # a-1
+        mat[1, 2] <- mat[1, 2] + 1 # b+1 # largest value increases
+        mat[2, 1] <- mat[2, 1] + 1 # c+1
+        mat[2, 2] <- mat[2, 2] - 1 # d-1
+      }
+      p_value <- fisher.test(mat)$p.value
+      iteration <- iteration + 1
+      print(paste("Iteration:", iteration))
+      print(mat)
+      print(paste("P-value:", round(p_value, 3)))
+      if (p_value < 0.05) {
+        break
+      }
+    }
+  } else {
+    while (TRUE) {
+      if (mat[1, 2] <= mat[1, 1]) { # 2nd value is smaller than one
+        # the smallest observed outcome is increased by one unit 
+        
+        mat[1, 1] <- mat[1, 1] - 1 
+        mat[1, 2] <- mat[1, 2] + 1 #as 1, 2 is smaller
+        # the smallest observed outcome is increased by one unit 
+        mat[2, 1] <- mat[2, 1] + 1
+        mat[2, 2] <- mat[2, 2] - 1
+      } else {
+        mat[1, 1] <- mat[1, 1] + 1 # a+f #as 1, 1 is smaller
+        mat[1, 2] <- mat[1, 2] - 1 # b-f
+        mat[2, 1] <- mat[2, 1] - 1 # c-f
+        mat[2, 2] <- mat[2, 2] + 1 # d+f
+      }
+      p_value <- fisher.test(mat)$p.value
+      iteration <- iteration + 1
+      print(paste("Iteration:", iteration))
+      print(mat)
+      print(paste("P-value:", round(p_value, 3)))
+      if (p_value > 0.05) {
+        break
+      }
+    }
+  }
+  return(list(iteration = iteration, p_value = p_value))
+}
+
+
+# Prepare results table
+ufi_results <- data.frame(
+  table_name = character(0),
+  initial_p = numeric(0),
+  final_p = numeric(0),
+  UFI = numeric(0),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each table
+for (name in names(data)) {
+  print(paste("Calculating UFI for table:", name))
+  mat <- data[[name]]
+  initial_p <- fisher.test(mat)$p.value
+  
+  result <- calculate_p_values(mat, initial_p)
+  final_p <- result$p_value
+  ufi <- result$iteration
+  
+  # Store in results
+  ufi_results <- rbind(ufi_results, data.frame(
+    table_name = name,
+    initial_p_fisher = round(initial_p, 4),
+    final_p = round(final_p, 4),
+    UFI = ufi
+  ))
+}
+
+# Print final results
+print("UFI Results for All Tables:")
+print(ufi_results)
+
+```
+
+
+# Function for calculating the robustness index (RI)
+
+```{r}
+calculate_final_f <- function(mat, p_value, f_start = 1, threshold = 0.05, f_increment) {
+  f <- f_start
+  iteration <- 0
+  original_mat <- mat  # Store original matrix
+  n1 <- sum(original_mat)
+  intermediate_f_values <- c()  # Store intermediate f-values
+  dividing_factors <- c()  # Store dividing factors
+  f_values <- c()  # Store updated f-values
+
+  if (p_value > threshold) {
+    while (TRUE) {
+      # Update the contingency table
+      #mat <- mat * f
+      mat[1, 1] <- mat[1, 1] * f
+      mat[1, 2] <- mat[1, 2] * f
+      mat[2, 1] <- mat[2, 1] * f
+      mat[2, 2] <- mat[2, 2] * f
+
+      # Calculate new p-value
+      #p_value <- fisher.test(mat)$p.value  
+      p_value <- chisq.test(mat)$p.value  #chisq.test or fisher.test (as above)
+
+      iteration <- iteration + 1
+      intermediate_f_values <- c(intermediate_f_values, f)
+      f_values <- c(f_values, f)  # Store updated f values
+      
+      # Calculate dividing factor, avoiding division by zero
+      dividing_factor <- ifelse(mat == 0, NA, mat / original_mat)
+      mean_dividing_factor <- mean(dividing_factor, na.rm = TRUE)  
+      
+      # Store dividing factor
+      dividing_factors <- c(dividing_factors, mean_dividing_factor)
+      
+      print(round(mat,2))
+      print(paste("P-value:", round(p_value, 4)))
+      print(paste("multiplication_factor:", round(mean(dividing_factors), 5)))
+  
+      # If p-value is below the threshold, exit loop
+      if (p_value < threshold) {
+        break
+      }
+
+      f <- f + f_increment  # Increment f based on the given step size
+    }
+
+    # Calculate final f-value
+    n2 <- sum(mat)
+    final_f_value <- n2 / n1
+
+  } else {
+    while (TRUE) {
+      # Update the contingency table
+      #mat <- mat / f
+      mat[1, 1] <- mat[1, 1] / f
+      mat[1, 2] <- mat[1, 2] / f
+      mat[2, 1] <- mat[2, 1] / f
+      mat[2, 2] <- mat[2, 2] / f
+
+      # Calculate new p-value
+      #p_value <- fisher.test(mat)$p.value  
+      p_value <- chisq.test(mat)$p.value  #chisq.test or fisher.test
+
+      iteration <- iteration + 1
+      f_values <- c(f_values, f)  # Store updated f values
+      
+      # Calculate dividing factor, avoiding division by zero
+      dividing_factor <- ifelse(mat == 0, NA, original_mat / mat)
+      mean_dividing_factor <- mean(dividing_factor, na.rm = TRUE)  
+      dividing_factors <- c(dividing_factors, mean_dividing_factor)
+
+      print(round(mat,2))
+      print(paste("P-value:", round(p_value, 4)))
+      print(paste("Dividing Factor:", round(mean(dividing_factors), 5)))
+      
+      # If p-value is greater than threshold, exit loop
+      if (p_value > threshold) {
+        break
+      }
+
+      f <- f + f_increment  # Increment f based on step size
+    }
+
+    # Calculate final f-value
+    n2 <- sum(mat)
+    final_f_value <- n1 / n2
+  }
+
+  return(list(
+    iteration = iteration, 
+    p_value = p_value, 
+    final_f_value = final_f_value, 
+    final_f = f,
+    dividing_factors = dividing_factors,
+    f_values = f_values
+  ))
+}
+
+
+
+# List of f increment values
+#f_increments <- c(1, 0.1, 0.01, 0.001, 0.0001, 0.00001, 0.000001, 0.0000001, 0.000000001, 0.0000000001, 0.00000000001) # to check a list of increment
+
+f_increments <- c(0.0000000001) # 1E-10 (chosen value as the values remain stable afterwards)
+
+final_results <- data.frame(
+  table_name = character(0),
+  f_increment = numeric(0),
+  final_p = numeric(0),
+  final_f_value = numeric(0),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each table in the data list
+for (table_name in names(data)) {
+  
+  mat <- data[[table_name]]  # Extract the matrix for the specified table
+  
+  # Initial chisq.test
+  p_value <- chisq.test(mat)$p.value  #chisq.test
+
+  # Round p-value to 3 decimal places
+  p_value_rounded <- round(p_value, 4)  # Round to 3 digits
+  print(paste("Running calculations for table:", table_name))
+
+  # Loop through each f_increment
+  for (f_inc in f_increments) {
+    print(paste("Running calculations for f increment:", f_inc))
+
+    # Run the function with the given f increment
+    result <- calculate_final_f(mat, p_value_rounded, f_start = 1, f_increment = f_inc)
+    final_p_rounded <- round(result$p_value, 4)
+    #final_p = sprintf("%.4f", result$p_value),  #  sprintf for 4 digits
+    
+    # Add the result to the final results table with rounded values
+    final_results <- rbind(final_results, 
+                           data.frame(
+                             table_name = table_name,
+                             f_increment = f_inc,
+                             initial_p_chi = p_value_rounded,
+                             final_p = final_p_rounded,
+                             RI = round(result$final_f_value, 4)
+                           ))
+  }
+}
+
+# Print final results table
+print("Final Results for All Tables and f increments:")
+print(final_results)
+
+
+```
+
+# Print the combined table
+```{r}
+# First, rename 'final_p' in final_results to avoid conflict
+colnames(final_results)[colnames(final_results) == "final_p"] <- "RI_final_p"
+
+# Merge on 'table_name'
+combined_results <- merge(ufi_results, final_results, by = "table_name")
+
+# Print the combined table
+print("Combined UFI and RI Results:")
+print(combined_results)
+
+```
+
